@@ -21,6 +21,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "EPD_Test.h"
 
 /* USER CODE END Includes */
 
