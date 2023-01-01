@@ -94,6 +94,8 @@ int main(void)
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
 
+  EPD_test();
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
