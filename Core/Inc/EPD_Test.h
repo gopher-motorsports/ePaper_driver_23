@@ -30,7 +30,7 @@
 #ifndef _EPD_TEST_H_
 #define _EPD_TEST_H_
 
-#include "DEV_Config.h"
+#include "epaper.h"
 #include "GUI_Paint.h"
 #include "imagedata.h"
 #include "Debug.h"

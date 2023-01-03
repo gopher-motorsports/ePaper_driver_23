@@ -28,43 +28,42 @@
 #
 ******************************************************************************/
 #include "EPD_Test.h"
-#include "EPD_2in9_V2.h"
 
 int EPD_test(void)
 {
     printf("EPD_2IN9_V2_test Demo\r\n");
-    if(DEV_Module_Init()!=0){
+    if(epdCommunicationInit()!=0){
         return -1;
     }
 
     printf("e-Paper Init and Clear...\r\n");
-	EPD_2IN9_V2_Init();
-    EPD_2IN9_V2_Clear();
+	epdInit();
+    epdClear();
 
     //Create a new image cache
-    UBYTE *BlackImage;
-    UWORD Imagesize = ((EPD_2IN9_V2_WIDTH % 8 == 0)? (EPD_2IN9_V2_WIDTH / 8 ): (EPD_2IN9_V2_WIDTH / 8 + 1)) * EPD_2IN9_V2_HEIGHT;
-    if((BlackImage = (UBYTE *)malloc(Imagesize)) == NULL) {
+    uint8_t *BlackImage;
+    uint16_t Imagesize = ((EPD_WIDTH % 8 == 0)? (EPD_WIDTH / 8 ): (EPD_WIDTH / 8 + 1)) * EPD_HEIGHT;
+    if((BlackImage = (uint8_t *)malloc(Imagesize)) == NULL) {
         printf("Failed to apply for black memory...\r\n");
         return -1;
     }
     printf("Paint_NewImage\r\n");
-    Paint_NewImage(BlackImage, EPD_2IN9_V2_WIDTH, EPD_2IN9_V2_HEIGHT, 90, WHITE);
+    Paint_NewImage(BlackImage, EPD_WIDTH, EPD_HEIGHT, 90, WHITE);
 	Paint_Clear(WHITE);
 
 #if 1  //show image for array  
-    Paint_NewImage(BlackImage, EPD_2IN9_V2_WIDTH, EPD_2IN9_V2_HEIGHT, 90, WHITE);  
+    Paint_NewImage(BlackImage, EPD_WIDTH, EPD_HEIGHT, 90, WHITE);  
     printf("show image for array\r\n");
     Paint_SelectImage(BlackImage);
     Paint_Clear(WHITE);
     Paint_DrawBitMap(gImage_2in9);
 
-    EPD_2IN9_V2_Display(BlackImage);
-    DEV_Delay_ms(3000);
+    epdDisplay(BlackImage);
+    vTaskDelay(3000 / portTICK_PERIOD_MS);
 #endif
 
 #if 1  // Drawing on the image
-	Paint_NewImage(BlackImage, EPD_2IN9_V2_WIDTH, EPD_2IN9_V2_HEIGHT, 90, WHITE);  	
+	Paint_NewImage(BlackImage, EPD_WIDTH, EPD_HEIGHT, 90, WHITE);  	
     printf("Drawing\r\n");
     //1.Select Image
     Paint_SelectImage(BlackImage);
@@ -97,12 +96,12 @@ int EPD_test(void)
     Paint_DrawString_CN(130, 0,"你好abc", &Font12CN, BLACK, WHITE);
     Paint_DrawString_CN(130, 20, "微雪电子", &Font24CN, WHITE, BLACK);
 
-    EPD_2IN9_V2_Display_Base(BlackImage);
-    DEV_Delay_ms(3000);
+    epdDisplay_Base(BlackImage);
+    vTaskDelay(3000 / portTICK_PERIOD_MS);
 #endif
 
 #if 1   //Partial refresh, example shows time    		
-	Paint_NewImage(BlackImage, EPD_2IN9_V2_WIDTH, EPD_2IN9_V2_HEIGHT, 90, WHITE);  
+	Paint_NewImage(BlackImage, EPD_WIDTH, EPD_HEIGHT, 90, WHITE);  
     printf("Partial refresh\r\n");
     Paint_SelectImage(BlackImage);
 	
@@ -110,7 +109,7 @@ int EPD_test(void)
     sPaint_time.Hour = 12;
     sPaint_time.Min = 34;
     sPaint_time.Sec = 56;
-    UBYTE num = 10;
+    uint8_t num = 10;
     for (;;) {
         sPaint_time.Sec = sPaint_time.Sec + 1;
         if (sPaint_time.Sec == 60) {
@@ -133,23 +132,23 @@ int EPD_test(void)
         if(num == 0) {
             break;
         }
-		EPD_2IN9_V2_Display_Partial(BlackImage);
-        DEV_Delay_ms(500);//Analog clock 1s
+		epdDisplay_Partial(BlackImage);
+        vTaskDelay(500 / portTICK_PERIOD_MS);//Analog clock 1s
     }
 #endif
 
 	printf("Clear...\r\n");
-	EPD_2IN9_V2_Init();
-    EPD_2IN9_V2_Clear();
+	epdInit();
+    epdClear();
 	
     printf("Goto Sleep...\r\n");
-    EPD_2IN9_V2_Sleep();
+    epdSleep();
     free(BlackImage);
     BlackImage = NULL;
-    DEV_Delay_ms(2000);//important, at least 2s
+    vTaskDelay(2000 / portTICK_PERIOD_MS);//important, at least 2s
     // close 5V
     printf("close 5V, Module enters 0 power consumption ...\r\n");
-    DEV_Module_Exit();
+    epdCommunicationExit();
     return 0;
 }
 
