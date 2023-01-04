@@ -312,20 +312,20 @@ static void epdSetCursor(uint16_t Xstart, uint16_t Ystart)
 /*!
   @brief	Open epaper SPI communication
 */
-int epdCommunicationInit(void)
-{
-    setCommandMode();
-    csOn();
-    HAL_GPIO_WritePin(RST_GPIO_Port, RST_Pin, GPIO_PIN_SET);
-	return 0;
-}
+int epdCommunicationInit()
+    {
+        setCommandMode();
+		csOn();
+		HAL_GPIO_WritePin(RST_GPIO_Port, RST_Pin, GPIO_PIN_SET);
+		return 0;
+    }
 
 /*!
   @brief	Close epaper SPI communication
 */
-void epdCommunicationExit(void)
+void epdCommunicationExit()
 {
-    setCommandMode();
+	setCommandMode();
     csOn();
     //close 5V
     HAL_GPIO_WritePin(RST_GPIO_Port, RST_Pin, GPIO_PIN_RESET);

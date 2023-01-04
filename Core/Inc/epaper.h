@@ -10,7 +10,7 @@
 #define EPD_HEIGHT                      296
 
 // Lookup table size
-#define LUT_SIZE                159
+#define LUT_SIZE                        159
 
 // Commands
 #define CMD_DRIVER_OUTPUT_CONTROL           0x01
@@ -34,13 +34,13 @@
 #define CMD_SET_RAM_X_COUNTER               0x4E
 #define CMD_SET_RAM_Y_COUNTER               0x4F
 
-int epdModuleInit(void);
-void epdModuleExit(void);
-void epdInit(void);
-void epdClear(void);
+int epdCommunicationInit();
+void epdCommunicationExit();
+void epdInit();
+void epdClear();
 void epdDisplay(uint8_t *Image);
 void epdDisplay_Base(uint8_t *Image);
 void epdDisplay_Partial(uint8_t *Image);
-void epdSleep(void);
+void epdSleep();
 
 #endif /* INC_EPAPER_H_ */
