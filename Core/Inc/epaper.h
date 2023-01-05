@@ -1,9 +1,17 @@
 #ifndef INC_EPAPER_H_
 #define INC_EPAPER_H_
 
+/* ==================================================================== */
+/* ============================= INCLUDES ============================= */
+/* ==================================================================== */
+
 #include "main.h"
 #include "Debug.h"
 #include "cmsis_os.h"
+
+/* ==================================================================== */
+/* ============================= DEFINES ============================== */
+/* ==================================================================== */
 
 // Display resolution
 #define EPD_WIDTH                       128
@@ -12,7 +20,10 @@
 // Lookup table size
 #define LUT_SIZE                        159
 
-// Commands
+// Update size, given by resolution in bytes
+#define UPDATE_BYTES                    (EPD_WIDTH * EPD_HEIGHT) / 8
+
+// Command Registers
 #define CMD_DRIVER_OUTPUT_CONTROL           0x01
 #define CMD_GATE_DRIVING_VOLTAGE_CONTROL    0x03
 #define CMD_SOURCE_DRIVING_VOLTAGE_CONTROL  0x04
@@ -34,13 +45,14 @@
 #define CMD_SET_RAM_X_COUNTER               0x4E
 #define CMD_SET_RAM_Y_COUNTER               0x4F
 
-int epdCommunicationInit();
-void epdCommunicationExit();
+/* ==================================================================== */
+/* =================== GLOBAL FUNCTION DEFINITIONS ==================== */
+/* ==================================================================== */
+
 void epdInit();
 void epdClear();
 void epdDisplay(uint8_t *Image);
-void epdDisplay_Base(uint8_t *Image);
-void epdDisplay_Partial(uint8_t *Image);
+void epdDisplayPartial(uint8_t *Image);
 void epdSleep();
 
 #endif /* INC_EPAPER_H_ */

@@ -1,11 +1,13 @@
 /* ==================================================================== */
 /* ============================= INCLUDES ============================= */
 /* ==================================================================== */
+
 #include "epaper.h"
 
 /* ==================================================================== */
 /* ========================= LOCAL VARIABLES ========================== */
 /* ==================================================================== */
+
 uint8_t blackScreenData[4736] = {[0 ... 4735] = 0xff};
 uint8_t sendBuffer[8];
 uint8_t WF_PARTIAL_LUT[LUT_SIZE] =
@@ -50,6 +52,7 @@ uint8_t WS_20_30_LUT[LUT_SIZE] =
 /* ==================================================================== */
 /* ======================= EXTERNAL VARIABLES ========================= */
 /* ==================================================================== */
+
 extern osSemaphoreId BinarySem01Handle;
 extern osSemaphoreId epapBusySemHandle;
 extern SPI_HandleTypeDef hspi1;
@@ -58,6 +61,7 @@ extern SPI_HandleTypeDef hspi1;
 /* ==================================================================== */
 /* ======================= INTERUPT HANDLERS ========================== */
 /* ==================================================================== */
+
 void HAL_SPI_TxCpltCallback(SPI_HandleTypeDef *hspi)
 {
 	if (hspi == &hspi1)
@@ -81,6 +85,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 /* ==================================================================== */
 /* =================== LOCAL FUNCTION DEFINITIONS ===================== */
 /* ==================================================================== */
+
 /*!
   @brief   Pull epaper chip select pin low, allowing communication
 */
@@ -114,28 +119,33 @@ static void setDataMode()
 }
 
 /*!
-  @brief   Epaper communication reset
+  @brief   Pull epaper reset pin low, disabling the epaper
 */
-static void epdReset()
+static void reset()
 {
-    HAL_GPIO_WritePin(RST_GPIO_Port, RST_Pin, GPIO_PIN_SET);
-    vTaskDelay(100 / portTICK_PERIOD_MS);
-    HAL_GPIO_WritePin(RST_GPIO_Port, RST_Pin, GPIO_PIN_RESET);
-    vTaskDelay(2 / portTICK_PERIOD_MS);
-    HAL_GPIO_WritePin(RST_GPIO_Port, RST_Pin, GPIO_PIN_SET);
-    vTaskDelay(100 / portTICK_PERIOD_MS);
+	HAL_GPIO_WritePin(RST_GPIO_Port, RST_Pin, GPIO_PIN_RESET);
+	vTaskDelay(2 / portTICK_PERIOD_MS);
+}
+
+/*!
+  @brief   	Pull epaper reset pin high, enabling the epaper
+*/
+static void enable()
+{
+	HAL_GPIO_WritePin(RST_GPIO_Port, RST_Pin, GPIO_PIN_SET);
+	vTaskDelay(2 / portTICK_PERIOD_MS);
 }
 
 /*!
   @brief   Wait for busy pin external interupt to be disasserted 
 */
-static void edpReadBusy()
+static void waitBusyRelease()
 {
     if(HAL_GPIO_ReadPin(BUSY_GPIO_Port, BUSY_Pin) == 1)
     {
         Debug("e-Paper busy\r\n");
         xSemaphoreTake(epapBusySemHandle, 0); // Guarantee epapBusySemHandle set to 0 
-        if (!(xSemaphoreTake(epapBusySemHandle, 10) == pdTRUE))
+        if (!(xSemaphoreTake(epapBusySemHandle, 5000) == pdTRUE))
             {
                 Debug("Interrupt failed to occur during SPI transmit\n");
             }
@@ -147,15 +157,22 @@ static void edpReadBusy()
   @brief   Send a command to the epaper
   @param   command Register address of command 
 */
-static void epdSendCommand(uint8_t command)
+static void sendCommand(uint8_t command)
 {
+	// Set Epaper to command mode
     setCommandMode();
+	// Open spi communication
     csOn();
+
+	// Write command to spi 
     HAL_SPI_Transmit_IT(&hspi1, (uint8_t *)&command, 1);
+	// Wait for spi interupt signaling data transfer complete - timeout 10ms
     if (!(xSemaphoreTake(BinarySem01Handle, 10) == pdTRUE))
 	{
 		Debug("Interrupt failed to occur during SPI transmit\n");
 	}
+
+	// Close spi communication
     csOff();
 }
 
@@ -165,7 +182,7 @@ static void epdSendCommand(uint8_t command)
   @param   data 	Data to be written to epaper 
   @param   numBytes Size of data transfer excluding command byte 
 */
-static void epdSendMessage(uint8_t command, uint8_t* data, uint16_t numBytes)
+static void sendMessage(uint8_t command, uint8_t* data, uint16_t numBytes)
 {
 	    // Set Epaper to command mode
 		setCommandMode(); 
@@ -196,75 +213,65 @@ static void epdSendMessage(uint8_t command, uint8_t* data, uint16_t numBytes)
 }
 
 /*!
-  @brief   Set Epaper internal lookup table excluding voltage data
-  @param   lut 	Look up table to write to epaper
-*/
-static void epdLUT(uint8_t *lut)
-{       
-	// Set look up table register - last 6 bytes belong to seperate registers
-	epdSendMessage(CMD_WRITE_LUT_REGISTER, lut, LUT_SIZE - 6);
-	// Wait for Busy* interupt
-	edpReadBusy(); 
-}
-
-/*!
   @brief   Set Epaper internal lookup table and voltage data
   @param   lut 	Look up table to write to epaper
 */
-static void epdHostLUT(uint8_t *lut)
+static void setLookupTable(uint8_t *lut)
 {
-	// Set Look up table Register
-	epdLUT(lut);
+	// Set look up table register - last 6 bytes belong to seperate registers
+	sendMessage(CMD_WRITE_LUT_REGISTER, lut, LUT_SIZE - 6);
+	// Wait for busy_release interupt
+	waitBusyRelease(); 
 
 	// Set Mystery Register 1
 	sendBuffer[0] = lut[153];		
-	epdSendMessage(CMD_WRITE_MYSTERY_REGISTER_2, sendBuffer, 1);
+	sendMessage(CMD_WRITE_MYSTERY_REGISTER_2, sendBuffer, 1);
 
 	// Set Gate voltage Control Register
-	sendBuffer[0] = lut[153];		
-	epdSendMessage(CMD_GATE_DRIVING_VOLTAGE_CONTROL, sendBuffer, 1);
+	sendBuffer[0] = lut[154];		
+	sendMessage(CMD_GATE_DRIVING_VOLTAGE_CONTROL, sendBuffer, 1);
 
 	// Set Source Driving Voltage Register
 	sendBuffer[0] = lut[155];
 	sendBuffer[1] = lut[156];
 	sendBuffer[2] = lut[157];
-	epdSendMessage(CMD_SOURCE_DRIVING_VOLTAGE_CONTROL, sendBuffer, 3);
+	sendMessage(CMD_SOURCE_DRIVING_VOLTAGE_CONTROL, sendBuffer, 3);
 
 	// Set VCOM Register
 	sendBuffer[0] = lut[158];
-	epdSendMessage(CMD_WRITE_VCOM_REGISTER, sendBuffer, 1);
+	sendMessage(CMD_WRITE_VCOM_REGISTER, sendBuffer, 1);
 }
 
 /*!
   @brief   Turn on Epaper display
 */
-static void epdTurnOnDisplay()
+static void turnOnDisplay()
 {
 	// Set display update sequence
 	sendBuffer[0] = 0xc7;
-	epdSendMessage(CMD_DISPLAY_UPDATE_CONTROL_2, sendBuffer, 1);
+	sendMessage(CMD_DISPLAY_UPDATE_CONTROL_2, sendBuffer, 1);
 
 	// Activate display update sequence
-	epdSendCommand(CMD_MASTER_ACTIVATION);
+	sendCommand(CMD_MASTER_ACTIVATION);
 
-	// Wait for Busy* interupt
-	edpReadBusy();
+	// Wait for busy_release interupt
+	waitBusyRelease();
 }
 
 /*!
   @brief   	Turn on Epaper display Partial
 */
-static void epdTurnOnDisplay_Partial()
+static void turnOnDisplayPartial()
 {
 	// Set display update sequence
 	sendBuffer[0] = 0x0F;
-	epdSendMessage(CMD_DISPLAY_UPDATE_CONTROL_2, sendBuffer, 1);
+	sendMessage(CMD_DISPLAY_UPDATE_CONTROL_2, sendBuffer, 1);
 
 	// Activate display update sequence
-	epdSendCommand(CMD_MASTER_ACTIVATION);
+	sendCommand(CMD_MASTER_ACTIVATION);
 
-	// Wait for Busy* interupt
-	edpReadBusy();
+	// Wait for busy_release interupt
+	waitBusyRelease();
 }
 
 /*!
@@ -274,19 +281,19 @@ static void epdTurnOnDisplay_Partial()
   @param	Xend 	Ending X coordinate
   @param	Yend	Ending Y coordinate
 */
-static void epdSetWindows(uint16_t Xstart, uint16_t Ystart, uint16_t Xend, uint16_t Yend)
+static void setWindows(uint16_t Xstart, uint16_t Ystart, uint16_t Xend, uint16_t Yend)
 {
 	// SET_RAM_X_ADDRESS_START_END_POSITION
 	sendBuffer[0] = (Xstart>>3) & 0xFF;
 	sendBuffer[1] = (Xend>>3) & 0xFF;
-	epdSendMessage(CMD_SET_RAM_X_WINDOW, sendBuffer, 2);
+	sendMessage(CMD_SET_RAM_X_WINDOW, sendBuffer, 2);
 	
 	// SET_RAM_Y_ADDRESS_START_END_POSITION
 	sendBuffer[0] = Ystart & 0xFF;
 	sendBuffer[1] = (Ystart >> 8) & 0xFF;
 	sendBuffer[2] = Yend & 0xFF;
 	sendBuffer[3] = (Yend >> 8) & 0xFF;
-    epdSendMessage(CMD_SET_RAM_Y_WINDOW, sendBuffer, 4);
+    sendMessage(CMD_SET_RAM_Y_WINDOW, sendBuffer, 4);
 }
 
 /*!
@@ -294,73 +301,66 @@ static void epdSetWindows(uint16_t Xstart, uint16_t Ystart, uint16_t Xend, uint1
   @param	Xstart	Starting X coordinate
   @param	Ystart	Starting Y coordinate
 */
-static void epdSetCursor(uint16_t Xstart, uint16_t Ystart)
+static void setCursor(uint16_t Xstart, uint16_t Ystart)
 {
 	// SET_RAM_X_ADDRESS_COUNTER
 	sendBuffer[0] = (Xstart & 0xFF);
-	epdSendMessage(CMD_SET_RAM_X_COUNTER, sendBuffer, 1);
+	sendMessage(CMD_SET_RAM_X_COUNTER, sendBuffer, 1);
 
 	// SET_RAM_Y_ADDRESS_COUNTER
 	sendBuffer[0] = Ystart & 0xFF;
 	sendBuffer[1] = ((Ystart >> 8) & 0xFF);
-    epdSendMessage(CMD_SET_RAM_Y_COUNTER, sendBuffer, 2);
+    sendMessage(CMD_SET_RAM_Y_COUNTER, sendBuffer, 2);
 }
 
 /* ==================================================================== */
 /* =================== GLOBAL FUNCTION DEFINITIONS ==================== */
 /* ==================================================================== */
-/*!
-  @brief	Open epaper SPI communication
-*/
-int epdCommunicationInit()
-    {
-        setCommandMode();
-		csOn();
-		HAL_GPIO_WritePin(RST_GPIO_Port, RST_Pin, GPIO_PIN_SET);
-		return 0;
-    }
-
-/*!
-  @brief	Close epaper SPI communication
-*/
-void epdCommunicationExit()
-{
-	setCommandMode();
-    csOn();
-    //close 5V
-    HAL_GPIO_WritePin(RST_GPIO_Port, RST_Pin, GPIO_PIN_RESET);
-}
 
 /*!
   @brief	Initialize epaper display
 */
 void epdInit()
 {
-	epdReset();
+	// Set initial pin configuration
+	setCommandMode();
+	csOn();
+	enable();
+
+	// Excecute delayed reset sequence
 	vTaskDelay(100 / portTICK_PERIOD_MS);
+	reset();
+	enable();
+	vTaskDelay(100 / portTICK_PERIOD_MS);
+	waitBusyRelease();
 
-	edpReadBusy();   
-	epdSendCommand(CMD_SW_RESET);  //SWRESET
-	edpReadBusy();   
+	// Software reset
+	sendCommand(CMD_SW_RESET); 
+	waitBusyRelease();   
 
+	// Configure driver output control
 	sendBuffer[0] = 0x27;
 	sendBuffer[1] = 0x01;
 	sendBuffer[2] = 0x00;
-	epdSendMessage(CMD_DRIVER_OUTPUT_CONTROL, sendBuffer, 3); //Driver output control    
+	sendMessage(CMD_DRIVER_OUTPUT_CONTROL, sendBuffer, 3);   
 
+	// Configure Data entry mode
 	sendBuffer[0] = 0x03;
-	epdSendMessage(CMD_DATA_ENTRY_MODE_SETTING, sendBuffer, 1); //data entry mode 
+	sendMessage(CMD_DATA_ENTRY_MODE_SETTING, sendBuffer, 1); 
 
-	epdSetWindows(0, 0, EPD_WIDTH-1, EPD_HEIGHT-1);
+	// Set window border size
+	setWindows(0, 0, EPD_WIDTH-1, EPD_HEIGHT-1);
 
+	// Configure display update control register 1
 	sendBuffer[0] = 0x00;
 	sendBuffer[1] = 0x80;
-	epdSendMessage(CMD_DISPLAY_UPDATE_CONTROL_1, sendBuffer, 2); //  Display update control	
+	sendMessage(CMD_DISPLAY_UPDATE_CONTROL_1, sendBuffer, 2);
 
-	epdSetCursor(0, 0);
-	edpReadBusy();
+	// Set initial cursor position
+	setCursor(0, 0);
 
-	epdHostLUT(WS_20_30_LUT);
+	// Wait for busy_release interupt
+	waitBusyRelease();
 }
 
 /*!
@@ -368,53 +368,47 @@ void epdInit()
 */
 void epdClear()
 {
-	// Write image to Black and White RAM
-	epdSendMessage(CMD_WRITE_RAM_BLACK_WHITE, blackScreenData, (EPD_WIDTH * EPD_HEIGHT) / 8);
+	// Set initial lookup table register 
+	setLookupTable(WS_20_30_LUT);
+
+	// Write white image to Black and White RAM
+	sendMessage(CMD_WRITE_RAM_BLACK_WHITE, blackScreenData, (EPD_WIDTH * EPD_HEIGHT) / 8);
 	
 	// Activate display
-	epdTurnOnDisplay();
+	turnOnDisplay();
 }
 
 /*!
-  @brief	Sends the image buffer in RAM to e-Paper and displays
+  @brief	Sends the image buffer in RAM to e-Paper and enables display
   @param	Image	Image to display
 */
 void epdDisplay(uint8_t *Image)
 {
-	// Write image to Black and White RAM
-	epdSendMessage(CMD_WRITE_RAM_BLACK_WHITE, Image, (EPD_WIDTH * EPD_HEIGHT) / 8);
+	// Set initial lookup table register 
+	setLookupTable(WS_20_30_LUT);
 
-	// Activate display
-	epdTurnOnDisplay();
-}
-
-/*!
-  @brief	Sends the image buffer in RAM to e-Paper and displays
-  @param	Image	Image to display
-*/
-void epdDisplay_Base(uint8_t *Image)
-{
 	// Write image to Black and White RAM
-	epdSendMessage(CMD_WRITE_RAM_BLACK_WHITE, Image, (EPD_WIDTH * EPD_HEIGHT) / 8);
+	sendMessage(CMD_WRITE_RAM_BLACK_WHITE, Image, (EPD_WIDTH * EPD_HEIGHT) / 8);
 
 	// Write image to Red RAM
-	epdSendMessage(CMD_WRITE_RAM_RED, Image, (EPD_WIDTH * EPD_HEIGHT) / 8);
+	sendMessage(CMD_WRITE_RAM_RED, Image, (EPD_WIDTH * EPD_HEIGHT) / 8);
 
 	// Activate display
-	epdTurnOnDisplay();
+	turnOnDisplay();
 }
 
 /*!
   @brief	Sends the partial image buffer in RAM to e-Paper and displays
   @param	Image	Image to display
 */
-void epdDisplay_Partial(uint8_t *Image)
+void epdDisplayPartial(uint8_t *Image)
 {
     // Reset epaper communication
-	epdReset();
+	reset();
+	enable();
 
 	// Update Look up table register
-	epdLUT(WF_PARTIAL_LUT);
+	setLookupTable(WF_PARTIAL_LUT);
 
 	// Set mystery register 1
 	sendBuffer[0] = 0x00;
@@ -427,31 +421,31 @@ void epdDisplay_Partial(uint8_t *Image)
 	sendBuffer[7] = 0x00;
 	sendBuffer[8] = 0x00;
 	sendBuffer[9] = 0x00;
-	epdSendMessage(CMD_WRITE_MYSTERY_REGISTER_1, sendBuffer, 10);
+	sendMessage(CMD_WRITE_MYSTERY_REGISTER_1, sendBuffer, 10);
 	
 	// Set border waveform register
 	sendBuffer[0] = 0x80;
-	epdSendMessage(CMD_BORDER_WAVEFORM_CONTROL, sendBuffer, 1);
+	sendMessage(CMD_BORDER_WAVEFORM_CONTROL, sendBuffer, 1);
 
 	// Set display update control register
 	sendBuffer[0] = 0xC0;
-	epdSendMessage(CMD_DISPLAY_UPDATE_CONTROL_2, sendBuffer, 1);
+	sendMessage(CMD_DISPLAY_UPDATE_CONTROL_2, sendBuffer, 1);
 
 	// Active display update sequence
-	epdSendCommand(CMD_MASTER_ACTIVATION);
+	sendCommand(CMD_MASTER_ACTIVATION);
 
 	// Wait for Busy* interupt
-	edpReadBusy();  
+	waitBusyRelease();  
 	
 	// Set window and cursor position
-	epdSetWindows(0, 0, EPD_WIDTH-1, EPD_HEIGHT-1);
-	epdSetCursor(0, 0);
+	setWindows(0, 0, EPD_WIDTH-1, EPD_HEIGHT-1);
+	setCursor(0, 0);
 
 	// Write Black and White image to RAM
-	epdSendMessage(CMD_WRITE_RAM_BLACK_WHITE, Image, (EPD_WIDTH * EPD_HEIGHT) / 8);
+	sendMessage(CMD_WRITE_RAM_BLACK_WHITE, Image, (EPD_WIDTH * EPD_HEIGHT) / 8);
 
 	// Turn on epaper display
-	epdTurnOnDisplay_Partial();
+	turnOnDisplayPartial();
 }
 
 /*!
@@ -461,6 +455,11 @@ void epdSleep()
 {
 	// Enable deep sleep mode
 	sendBuffer[0] = 0x01;
-	epdSendMessage(CMD_DEEP_SLEEP_MODE, sendBuffer, 1);
-	vTaskDelay(100 / portTICK_PERIOD_MS);
+	sendMessage(CMD_DEEP_SLEEP_MODE, sendBuffer, 1);
+	vTaskDelay(2000 / portTICK_PERIOD_MS);
+
+	setCommandMode();
+    csOn();
+	reset();
+
 }
