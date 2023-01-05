@@ -169,7 +169,7 @@ int EPD_test(void)
     // }
 
     printf("e-Paper Init and Clear...\r\n");
-	epdInit();
+	// epdInit();
     epdClear();
 
     //Create a new image cache
@@ -283,12 +283,13 @@ int EPD_test(void)
 #endif
 
 	printf("Clear...\r\n");
+    // epdInit();
     epdClear();
 	
     printf("Goto Sleep...\r\n");
     // close 5V
     printf("close 5V, Module enters 0 power consumption ...\r\n");
-    epdSleep();
+    // epdSleep();
     free(BlackImage);
     BlackImage = NULL;
     return 0;

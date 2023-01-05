@@ -49,7 +49,6 @@
 /* =================== GLOBAL FUNCTION DEFINITIONS ==================== */
 /* ==================================================================== */
 
-void epdInit();
 void epdClear();
 void epdDisplay(uint8_t *Image);
 void epdDisplayPartial(uint8_t *Image);

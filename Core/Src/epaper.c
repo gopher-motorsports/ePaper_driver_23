@@ -313,14 +313,10 @@ static void setCursor(uint16_t Xstart, uint16_t Ystart)
     sendMessage(CMD_SET_RAM_Y_COUNTER, sendBuffer, 2);
 }
 
-/* ==================================================================== */
-/* =================== GLOBAL FUNCTION DEFINITIONS ==================== */
-/* ==================================================================== */
-
 /*!
   @brief	Initialize epaper display
 */
-void epdInit()
+static void setDefaultSettings()
 {
 	// Set initial pin configuration
 	setCommandMode();
@@ -363,11 +359,18 @@ void epdInit()
 	waitBusyRelease();
 }
 
+/* ==================================================================== */
+/* =================== GLOBAL FUNCTION DEFINITIONS ==================== */
+/* ==================================================================== */
+
 /*!
   @brief	Clear epaper display
 */
 void epdClear()
 {
+	// Reset initial settings
+	setDefaultSettings();
+	
 	// Set initial lookup table register 
 	setLookupTable(WS_20_30_LUT);
 
@@ -384,6 +387,9 @@ void epdClear()
 */
 void epdDisplay(uint8_t *Image)
 {
+	// Reset initial settings
+	setDefaultSettings();
+
 	// Set initial lookup table register 
 	setLookupTable(WS_20_30_LUT);
 
@@ -398,12 +404,12 @@ void epdDisplay(uint8_t *Image)
 }
 
 /*!
-  @brief	Sends the partial image buffer in RAM to e-Paper and displays
+  @brief	Sends the partial image buffer in RAM to e-Paper and displays 
   @param	Image	Image to display
 */
 void epdDisplayPartial(uint8_t *Image)
 {
-    // Reset epaper communication
+    // // Reset epaper communication
 	reset();
 	enable();
 
@@ -453,11 +459,15 @@ void epdDisplayPartial(uint8_t *Image)
 */
 void epdSleep()
 {
-	// Enable deep sleep mode
+	// Wait for any operations to finish
+	waitBusyRelease();
+
+	// Enter deep sleep mode
 	sendBuffer[0] = 0x01;
 	sendMessage(CMD_DEEP_SLEEP_MODE, sendBuffer, 1);
-	vTaskDelay(2000 / portTICK_PERIOD_MS);
+	vTaskDelay(2000 / portTICK_PERIOD_MS); // Required
 
+	// Set exit configuration
 	setCommandMode();
     csOn();
 	reset();
